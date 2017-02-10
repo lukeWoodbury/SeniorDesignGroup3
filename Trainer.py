@@ -6,12 +6,14 @@ from scipy.io.wavfile import read
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
+from keras.layers.wrappers import TimeDistributed
 from keras.layers.convolutional import Convolution1D
 from keras.layers.convolutional import MaxPooling1D
 from keras.layers.embeddings import Embedding
 from keras.preprocessing import sequence
 from keras.backend import set_image_dim_ordering
 from scipy.signal.wavelets import wavedec
+from random import shuffle
 
 """def dataFeed( audioDataFile, outputsFile ):
     outputs = np.loadtxt( outputsFile, delimiter = "," )
@@ -24,43 +26,78 @@ from scipy.signal.wavelets import wavedec
 
 # fix random seed for reproducibility
 np.random.seed(7)
-max_audio_length = 10 * 44100
+#max_audio_length = 10 * 44100
 
 # load outputs
 
-def dataFeed():
+# loads batches of paired inputs and outputs
+def dataFeed( batchSize, audioSegmentLength, outputLength ):
+    outputs = np.loadtxt( "outputs.csv", delimiter = "," )
+    rootdir = '/home/jacob/Speakers/processed wav files/'
+    paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
+    newOutput = np.zeros( ( batchSize, outputLength ) )
+    batchCount = 0
+    speakerList = []
+    sampleCount = 0
+    with open( "order.csv", 'rb' ) as csvFile:
+        speakerOrder = csv.reader( csvFile )
+        speakerList = list( speakerOrder )[0]
     while True:
-        outputs = np.loadtxt( "outputs.csv", delimiter = "," )
-        rootdir = '/home/jacob/Speakers/processed wav files/'
-        with open( "order.csv", 'rb' ) as csvFile:
-            speakerOrder = csv.reader( csvFile )
-            speakerList = list( speakerOrder )[0]
-            for speaker, output in zip( speakerList, outputs ):
-                wav = read( rootdir + speaker + ".wav" )
+        shuffle( speakerList )
+        for speaker, output in zip( speakerList, outputs ):
+            wav = read( rootdir + speaker + ".wav" )
+            if len( wav[1].shape ) == 1:
                 wavData = np.array( wav[1], dtype = float )
-                paddedWavData = np.zeros( ( 1, max_audio_length, 1 ) )
-                for val, i in zip( wavData, range( len( wavData ) ) ):
-                    if i == max_audio_length:
-                        break
-                    paddedWavData[0][i][0] = val
-                newOutput = np.zeros( ( 1, 4 ) )#len( output ) ) )
-                for val, i in zip( output, range( 4 ) ):#len( output ) ) ):
-                    newOutput[0][i] = val
+            else:
+                wavData = wav[1].astype(float).sum( axis = 1 ) / 2.0
+            dataCount = 0
+            for val in wavData:
+                paddedWavData[batchCount][dataCount][0] = val
+                dataCount += 1
+                if dataCount == audioSegmentLength:
+                    dataCount = 0
+                    for val, i in zip( output, range( len( output ) ) ):
+                        newOutput[batchCount][i] = val
+                    batchCount += 1
+                    sampleCount += 1
+                    if batchCount == batchSize:
+                        batchCount = 0
+                        yield( paddedWavData, newOutput )
+                        paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
+                        newOutput = np.zeros( ( batchSize, outputLength ) )
+            batchCount += 1
+            sampleCount += 1
+            if batchCount == batchSize:
+                batchCount = 0
                 yield( paddedWavData, newOutput )
-                
+                paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
+                newOutput = np.zeros( ( batchSize, outputLength ) )
+        print sampleCount
+
+# definitions
+batchSize = 2
+audioSegmentLength = 5 * 44100
+outputLength = 526
+
+#myDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength )
+#while True:
+    #next( myDataFeed )
+
 # build model
-#set_image_dim_ordering('tf')
 model = Sequential()
-model.add(Convolution1D(nb_filter=32, filter_length=3, border_mode='same', activation='relu', input_dim = 1, input_length = max_audio_length))
-model.add(MaxPooling1D(pool_length=2))
-model.add(LSTM( 25 ) )
-#model.add( Convolution1D( nb_filter = 32, filter_length = 3, border_mode = 'same', activation = 'relu' ) )
+model.add(Convolution1D(nb_filter=200, filter_length=3, border_mode='same', activation='relu', input_dim = 1, input_length = audioSegmentLength ) )
+#model.add( Convolution1D( nb_filter = 100, filter_length = 3, border_mode = 'same' ) )
+model.add( LSTM( 100, return_sequences = True ) )
+model.add( TimeDistributed( Dense( 200, activation = 'sigmoid' ) ) )
+model.add( TimeDistributed( Dense( 200, activation = 'relu' ) ) )
+model.add( Convolution1D( nb_filter = 100, filter_length = 3, border_mode = 'same' ) )
+model.add( LSTM( 50 ) )
+#model.add( Convolution1D( nb_filter = 50, filter_length = 3, border_mode = 'same', activation = 'relu' ) )
+model.add( Dense( 100, activation = 'relu') )
 #model.add( MaxPooling1D( pool_length = 2 ) )
-model.add(Dense( 4, activation='sigmoid' ) )
+model.add(Dense( outputLength, activation='sigmoid' ) )
 model.compile(loss='mean_absolute_error', optimizer='adam', metrics=['accuracy'])
 print(model.summary())
-model.fit_generator( dataFeed(), samples_per_epoch = 10, nb_epoch = 4, nb_worker = 2, verbose = 1 )
+model.fit_generator( dataFeed( batchSize, audioSegmentLength, outputLength ), samples_per_epoch = 13868, nb_epoch = 4, max_q_size = 2, verbose = 1 )
         
-# truncate and pad input sequences
-#wavDatas = sequence.pad_sequences(wavDatas, maxlen=max_review_length)
-#X_test = sequence.pad_sequences(X_test, maxlen=max_review_length)
+#cpu time: 277k
