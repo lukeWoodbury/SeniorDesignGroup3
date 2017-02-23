@@ -6,6 +6,7 @@ import importlib.machinery
 import csv
 import os.path
 
+
 class Gui:
     
     def __init__(self,parent):
@@ -25,19 +26,15 @@ class Gui:
         
         # look for filestats.csv
         if os.path.exists('filestats.csv'):
-            print("file found")
             with open("filestats.csv",'r') as csvfile:
-                print("file opened")
-                reader = csv.DictReader(csvfile)
-                self.filedict = {rows[0]:rows[1] for rows in reader}
+                reader = csv.reader(csvfile)
+                for row in reader:
+                    self.filedict[row[0]]=row[1]
         else:
             open("filestats.csv").close()
-            
         
         # make the buttons
-        ttk.Button(initframe, text="New Project", command=self.runfile).grid(column=2, row=2, sticky=(W, E))
-        ttk.Button(initframe, text="Choose a Project", command=self.train).grid(column=4, row=2, sticky=(W, E))
-        ttk.Button(initframe, text="", command=self.test).grid(column=6,row=2,sticky=(W,E))
+        ttk.Button(initframe, text="Train a Model", command=self.train).grid(column=2, row=2, sticky=(W, E))
 
         # sets a pad for all children, not necessary
         for child in initframe.winfo_children():
@@ -50,12 +47,12 @@ class Gui:
     def runfile(self):
         filename = filedialog.askopenfilename()
         # import requested file
-        thing = importlib.machinery.SourceFileLoader('thing',filename).load_module()
-        item = thing.main()
+        module = importlib.machinery.SourceFileLoader('module',filename).load_module()
+        item = module.main()
 
         # check and update filedict
         if filename in self.filedict:
-            if self.filedict[filename] < item:
+            if item < int(self.filedict[filename]):
                 self.filedict[filename] = item
         else:
             self.filedict[filename] = item
@@ -83,7 +80,7 @@ class Gui:
         self.info_frame.rowconfigure(0, weight=1)
 
         ttk.Button(self.info_frame, text="Return Home", command=self.goback).grid(column=2, row=2, sticky=(W, E))
-
+    
 
 if __name__ == "__main__":
     root = Tk()
