@@ -64,8 +64,12 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
     with open( "order.csv", 'rb' ) as csvFile:
         speakerOrder = list( csv.reader( csvFile ) )[0]
     speakerList = []
+    cutoff = 0
     for speaker, output in zip( speakerOrder, outputs ):
         speakerList.append( ( speaker, output ) )
+        cutoff += 1
+        if cutoff >= 2:
+            break
     # begin infinite loop through data, shuffling each time
     while True:
         random.shuffle( speakerList )
@@ -78,18 +82,18 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
             else:
                 wavData = wav[1].astype(float).sum( axis = 1 ) / 2.0
             # begin loop through current audio file
-            dataCount = max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) )
-            maxClipLength = audioSegmentLength - dataCount
-            clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
+            dataCount = max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) - 1 )
+            #maxClipLength = audioSegmentLength - dataCount
+            #clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
             for amplitude in wavData:
                 # build sample
                 paddedWavData[sampleCount][dataCount][0] = amplitude / (2.**15)
                 dataCount += 1
-                if dataCount == clipPoint:
+                if dataCount == audioSegmentLength:
                     # pair sample with output
-                    dataCount = max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) )
-                    maxClipLength = audioSegmentLength - dataCount
-                    clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
+                    dataCount = 0 #max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) )
+                    #maxClipLength = audioSegmentLength - dataCount
+                    #clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
                     newOutput.append( output )
                     sampleCount += 1
                     if sampleCount == batchSize:
@@ -107,11 +111,11 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
                 newOutput = []#np.zeros( ( batchSize, outputLength ) )
 
 # definitions
-batchSize = 5
-audioSegmentLength = 5 * 16000
-outputLength = 526
-outputShape = ( 1, 1, 1, 1, 6, 179, 122, 215 )
-priorityResource = 'cpu'
+batchSize = 400
+audioSegmentLength = 441 #1 * 16000 / 2
+outputLength = 529
+outputShape = ( 2, )#, 1, 1, 1, 6, 179, 122, 215 )
+priorityResource = 'gpu'
 
 '''myDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
 while True:
@@ -119,19 +123,22 @@ while True:
 
 # build model
 wavInputs = Input( shape = ( audioSegmentLength, 1 ), dtype='float32', name='wavInputs')
-x = LSTM( 200, return_sequences = True, consume_less = priorityResource, name = 'hidden1' )( wavInputs )
-x = TimeDistributed( Dense( 200, activation = 'sigmoid', name = 'hidden2' ) )( x )
-x = TimeDistributed( Dense( 200, activation = 'relu', name = 'hidden3' ) )( x )
-x = LSTM( 100, return_sequences = True, consume_less = priorityResource, name = 'hidden4' )( x )
-x = TimeDistributed( Dense( 100, activation = 'sigmoid', name = 'hidden5' ) )( x )
-x = TimeDistributed( Dense( 100, activation = 'relu', name = 'hidden6' ) )( x )
-x = LSTM( 50, consume_less = priorityResource, name = 'hidden7' )( x )
-x = Dense( 50, activation = 'sigmoid', name = 'hidden8' )( x )
-x = Dense( 50, activation = 'relu', name = 'hidden9' )( x )
-gender = Dense( 100, activation = 'sigmoid', name = 'hidden10' )( x )
-gender = Dense( 100, activation = 'relu', name = 'hidden11' )( gender )
-gender = Dense( 1, activation = 'sigmoid', name = 'gender' )( gender )
-age = Dense( 100, activation = 'sigmoid', name = 'hidden12' )( x )
+x = LSTM( 400, return_sequences = True, consume_less = priorityResource, name = 'hidden1' )( wavInputs )
+x = TimeDistributed( Dense( 400, activation = 'sigmoid', name = 'hidden2' ) )( x )
+x = TimeDistributed( Dense( 300, activation = 'relu', name = 'hidden3' ) )( x )
+x = LSTM( 300, return_sequences = True, consume_less = priorityResource, name = 'hidden4' )( x )
+x = TimeDistributed( Dense( 300, activation = 'sigmoid', name = 'hidden5' ) )( x )
+x = TimeDistributed( Dense( 200, activation = 'relu', name = 'hidden6' ) )( x )
+x = LSTM( 200, return_sequences = True, consume_less = priorityResource, name = 'hidden7' )( x )
+x = TimeDistributed( Dense( 200, activation = 'sigmoid', name = 'hidden8' ) )( x )
+x = TimeDistributed( Dense( 100, activation = 'relu', name = 'hidden9' ) )( x )
+x = LSTM( 100, consume_less = priorityResource, name = 'hidden10' )( x )
+x = Dense( 100, activation = 'sigmoid', name = 'hidden11' )( x )
+x = Dense( 50, activation = 'relu', name = 'hidden12' )( x )
+gender = Dense( 50, activation = 'sigmoid', name = 'hidden13' )( x )
+gender = Dense( 50, activation = 'relu', name = 'hidden14' )( gender )
+gender = Dense( 2, activation = 'softmax', name = 'gender' )( gender )
+'''age = Dense( 100, activation = 'sigmoid', name = 'hidden12' )( x )
 age = Dense( 100, activation = 'relu', name = 'hidden13' )( age )
 age = Dense( 1, activation = 'linear', name = 'age' )( age )
 onsetAge = Dense( 100, activation = 'sigmoid', name = 'hidden14' )( x )
@@ -151,18 +158,19 @@ ER = Dense( 100, activation = 'relu', name = 'hidden23' )( ER )
 ER = Dense( 122, activation = 'softmax', name = 'ER' )( ER )
 NL = Dense( 100, activation = 'sigmoid', name = 'hidden24' )( x )
 NL = Dense( 100, activation = 'relu', name = 'hidden25' )( NL )
-NL = Dense( 215, activation = 'softmax', name = 'NL' )( NL )
-model = Model( input = wavInputs, output = [gender, age, onsetAge, LOR, LS, country, ER, NL] )
-losses = { 'gender': 'mse', 'age': 'mse', 'onsetAge': 'mse', 'LOR': 'mse', 'LS': 'categorical_crossentropy', 'country': 'categorical_crossentropy', 'ER': 'categorical_crossentropy', 'NL': 'categorical_crossentropy' }
-csv_logger = CSVLogger('training.log')
+NL = Dense( 215, activation = 'softmax', name = 'NL' )( NL )'''
+model = Model( input = wavInputs, output = gender )#, age, onsetAge, LOR, LS, country, ER, NL] )
+losses = { 'gender': 'categorical_crossentropy' }#, 'age': 'mse', 'onsetAge': 'mse', 'LOR': 'mse', 'LS': 'categorical_crossentropy', 'country': 'categorical_crossentropy', 'ER': 'categorical_crossentropy', 'NL': 'categorical_crossentropy' }
+csv_logger = CSVLogger( 'training.log' )
 checkpoint_logger = ModelCheckpoint('model.h5')
 # serialize model to JSON
 model_json = model.to_json()
 with open("model.json", "w") as json_file:
     json_file.write(model_json)
-model.compile( optimizer = 'rmsprop', loss = losses, metrics = ['accuracy'] )
+model.compile( optimizer = 'adam', loss = losses, metrics = ['accuracy'] )
 print( model.summary() )
-model.fit_generator( dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ), samples_per_epoch = 1000, nb_epoch = 30, max_q_size = 2, verbose = 1, callbacks=[csv_logger, checkpoint_logger] )
+fitDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
+model.fit_generator( fitDataFeed, samples_per_epoch = 60000, nb_epoch = 1000, max_q_size = 2, verbose = 1, callbacks = [csv_logger, checkpoint_logger] )
 '''# serialize weights to HDF5
 model.save_weights("model.h5")
 print("Saved model to disk")'''
