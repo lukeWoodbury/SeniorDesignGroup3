@@ -3,12 +3,11 @@ import numpy as np
 import os
 import csv
 from scipy.io.wavfile import read
+from keras.optimizers import RMSprop
+from keras.layers import Input, Embedding, LSTM, Dense, merge
 from keras.models import Sequential
 from keras.models import Model
 from keras.models import model_from_json
-from keras.layers import Dense
-from keras.layers import LSTM
-from keras.layers import Input
 from keras.callbacks import ModelCheckpoint
 from keras.callbacks import CSVLogger
 from keras.layers.wrappers import TimeDistributed
@@ -18,6 +17,7 @@ from keras.layers.embeddings import Embedding
 from keras.preprocessing import sequence
 from keras.backend import set_image_dim_ordering
 from scipy.signal.wavelets import wavedec
+from scipy.fftpack import rfft
 #from random import shuffle
 import random
 from Crypto.Random.random import randint
@@ -57,7 +57,8 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
     # variables
     rootdir = '/home/jacob/Speakers/processed wav files/converted/'
     paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
-    newOutput = [] #np.zeros( ( batchSize, outputLength ) )
+    freqData = []
+    newOutput = []
     sampleCount = 0
     outputs = np.loadtxt( "outputs.csv", delimiter = "," )
     speakerOrder = []
@@ -80,35 +81,38 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
             if len( wav[1].shape ) == 1:
                 wavData = np.array( wav[1], dtype = float )
             else:
-                wavData = wav[1].astype(float).sum( axis = 1 ) / 2.0
+                wavData = wav[1].astype( float ).sum( axis = 1 ) / 2.0
             # begin loop through current audio file
-            dataCount = max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) - 1 )
-            #maxClipLength = audioSegmentLength - dataCount
-            #clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
+            dataCount = randint( 0, audioSegmentLength - 1 )
+            #freqData.append( rfft( wavData ).tolist() )
             for amplitude in wavData:
                 # build sample
                 paddedWavData[sampleCount][dataCount][0] = amplitude / (2.**15)
                 dataCount += 1
                 if dataCount == audioSegmentLength:
                     # pair sample with output
-                    dataCount = 0 #max( 0, randint( -1 * audioSegmentLength, audioSegmentLength ) )
-                    #maxClipLength = audioSegmentLength - dataCount
-                    #clipPoint = audioSegmentLength - max( 0, randint( -1 * maxClipLength, maxClipLength ) )
+                    dataCount = 0
                     newOutput.append( output )
+                    freqData.append( rfft( paddedWavData[sampleCount].T ) )
                     sampleCount += 1
                     if sampleCount == batchSize:
                         sampleCount = 0
+                        #yield( [ paddedWavData, np.asarray( freqData ) ], convertOutput( batchSize, newOutput, outputShape ) )
                         yield( paddedWavData, convertOutput( batchSize, newOutput, outputShape ) )
                         paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
-                        newOutput = []#np.zeros( ( batchSize, outputLength ) )
+                        newOutput = []
+                        freqData = []
             # out of wav data in this audio file, yield current clip
             newOutput.append( output )
+            freqData.append( rfft( paddedWavData[sampleCount].T ) )
             sampleCount += 1
             if sampleCount == batchSize:
                 sampleCount = 0
+                #yield( [ paddedWavData, np.asarray( freqData ) ], convertOutput( batchSize, newOutput, outputShape ) )
                 yield( paddedWavData, convertOutput( batchSize, newOutput, outputShape ) )
                 paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
-                newOutput = []#np.zeros( ( batchSize, outputLength ) )
+                newOutput = []
+                freqData = []
 
 # definitions
 batchSize = 400
@@ -120,23 +124,34 @@ priorityResource = 'gpu'
 '''myDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
 while True:
     next( myDataFeed )'''
+    
 
 # build model
 wavInputs = Input( shape = ( audioSegmentLength, 1 ), dtype='float32', name='wavInputs')
 x = LSTM( 400, return_sequences = True, consume_less = priorityResource, name = 'hidden1' )( wavInputs )
 x = TimeDistributed( Dense( 400, activation = 'sigmoid', name = 'hidden2' ) )( x )
-x = TimeDistributed( Dense( 300, activation = 'relu', name = 'hidden3' ) )( x )
-x = LSTM( 300, return_sequences = True, consume_less = priorityResource, name = 'hidden4' )( x )
-x = TimeDistributed( Dense( 300, activation = 'sigmoid', name = 'hidden5' ) )( x )
-x = TimeDistributed( Dense( 200, activation = 'relu', name = 'hidden6' ) )( x )
-x = LSTM( 200, return_sequences = True, consume_less = priorityResource, name = 'hidden7' )( x )
-x = TimeDistributed( Dense( 200, activation = 'sigmoid', name = 'hidden8' ) )( x )
-x = TimeDistributed( Dense( 100, activation = 'relu', name = 'hidden9' ) )( x )
-x = LSTM( 100, consume_less = priorityResource, name = 'hidden10' )( x )
-x = Dense( 100, activation = 'sigmoid', name = 'hidden11' )( x )
-x = Dense( 50, activation = 'relu', name = 'hidden12' )( x )
-gender = Dense( 50, activation = 'sigmoid', name = 'hidden13' )( x )
-gender = Dense( 50, activation = 'relu', name = 'hidden14' )( gender )
+x = TimeDistributed( Dense( 200, activation = 'relu', name = 'hidden3' ) )( x )
+x = LSTM( 200, return_sequences = True, consume_less = priorityResource, name = 'hidden4' )( x )
+x = TimeDistributed( Dense( 200, activation = 'sigmoid', name = 'hidden5' ) )( x )
+x = TimeDistributed( Dense( 100, activation = 'relu', name = 'hidden6' ) )( x )
+x = LSTM( 100, consume_less = priorityResource, name = 'hidden7' )( x )
+x = Dense( 100, activation = 'sigmoid', name = 'hidden8' )( x )
+x = Dense( 50, activation = 'relu', name = 'hidden9' )( x )
+freqInputs = Input( shape = ( 1, audioSegmentLength ), dtype = 'float32', name = 'freqInputs' )
+y = LSTM( 400, return_sequences = True, consume_less = priorityResource, name = 'hidden10' )( freqInputs )
+y = TimeDistributed( Dense( 400, activation = 'sigmoid', name = 'hidden11' ) )( y )
+y = TimeDistributed( Dense( 200, activation = 'relu', name = 'hidden12' ) )( y )
+y = LSTM( 200, return_sequences = True, consume_less = priorityResource, name = 'hidden13' )( y )
+y = TimeDistributed( Dense( 200, activation = 'sigmoid', name = 'hidden14' ) )( y )
+y = TimeDistributed( Dense( 100, activation = 'relu', name = 'hidden15' ) )( y )
+y = LSTM( 100, consume_less = priorityResource, name = 'hidden16' )( y )
+y = Dense( 100, activation = 'sigmoid', name = 'hidden17' )( y )
+y = Dense( 50, activation = 'relu', name = 'hidden18' )( y )
+x = merge([x, y], mode='concat')
+x = Dense( 100, activation = 'sigmoid', name = 'hidden19' )( x )
+x = Dense( 50, activation = 'relu', name = 'hidden20' )( x )
+gender = Dense( 50, activation = 'sigmoid', name = 'hidden21' )( x )
+gender = Dense( 50, activation = 'relu', name = 'hidden22' )( gender )
 gender = Dense( 2, activation = 'softmax', name = 'gender' )( gender )
 '''age = Dense( 100, activation = 'sigmoid', name = 'hidden12' )( x )
 age = Dense( 100, activation = 'relu', name = 'hidden13' )( age )
@@ -159,7 +174,7 @@ ER = Dense( 122, activation = 'softmax', name = 'ER' )( ER )
 NL = Dense( 100, activation = 'sigmoid', name = 'hidden24' )( x )
 NL = Dense( 100, activation = 'relu', name = 'hidden25' )( NL )
 NL = Dense( 215, activation = 'softmax', name = 'NL' )( NL )'''
-model = Model( input = wavInputs, output = gender )#, age, onsetAge, LOR, LS, country, ER, NL] )
+model = Model( input = [ wavInputs, freqInputs ], output = gender )#, age, onsetAge, LOR, LS, country, ER, NL] )
 losses = { 'gender': 'categorical_crossentropy' }#, 'age': 'mse', 'onsetAge': 'mse', 'LOR': 'mse', 'LS': 'categorical_crossentropy', 'country': 'categorical_crossentropy', 'ER': 'categorical_crossentropy', 'NL': 'categorical_crossentropy' }
 csv_logger = CSVLogger( 'training.log' )
 checkpoint_logger = ModelCheckpoint('model.h5')
@@ -167,7 +182,7 @@ checkpoint_logger = ModelCheckpoint('model.h5')
 model_json = model.to_json()
 with open("model.json", "w") as json_file:
     json_file.write(model_json)
-model.compile( optimizer = 'adam', loss = losses, metrics = ['accuracy'] )
+model.compile( optimizer = RMSprop( lr = .00001 ), loss = losses, metrics = ['accuracy'] )
 print( model.summary() )
 fitDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
 model.fit_generator( fitDataFeed, samples_per_epoch = 60000, nb_epoch = 1000, max_q_size = 2, verbose = 1, callbacks = [csv_logger, checkpoint_logger] )
