@@ -1,0 +1,7 @@
+#!/bin/bash 
+if [ ! -d converted/ ]; then 
+ mkdir converted/ 
+fi 
+for i in ./*.wav; do
+ sox -S "$i" -r 44100 -b 16 "converted/$i";\ 
+done 
