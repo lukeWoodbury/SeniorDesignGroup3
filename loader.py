@@ -1,19 +1,17 @@
-# LSTM and CNN for sequence classification in the IMDB dataset
 import csv
 import numpy as np
 from scipy.io.wavfile import read
-from pip.req.req_file import process_line
-# fix random seed for reproducibility
-np.random.seed(7)
+#from pip.req.req_file import process_line
 
-textCategories = {"natural language": set(),
-                  "country": set(),
-                  "english residence": set(),
-                  "learning style": set()}
-outputKey = {"gender": 0,
-             "age": 1,
-             "onset age": 2,
-             "LOR": 3,}
+textCategories = { "natural language": set(),
+                   "country": set(),
+                   "english residence": set(),
+                   "learning style": set() }
+outputKey = { "male": 0,
+              "female": 1,
+              "age": 2,
+              "onset age": 3,
+              "LOR": 4 }
 speakerOutputs = []
 speakerOrder = []
 
@@ -27,21 +25,30 @@ with open("speakers.csv", 'rb') as csvFile:
 # finish filling outputKey
 i = len(outputKey)
 for category in textCategories:
+    print category
     for label in textCategories[category]:
         outputKey[category + " - " + label] = i;
         i += 1
+
 print( len( outputKey ) )
+for category in textCategories:
+    print category
+    print len( textCategories[category] )
     
 # fill speakerOutputs and speakerOrder
+maleCount = 0
 with open("speakers.csv", 'rb') as csvFile:
     speakers = csv.DictReader(csvFile)
     n = len(outputKey)
     for speaker in speakers:
         speakerOutput = [0] * n
         if speaker["gender"] == "male":
-            speakerOutput[outputKey["gender"]] = 1
+            speakerOutput[outputKey["male"]] = 1
+            speakerOutput[outputKey['female']] = 0
+            maleCount += 1
         else:
-            speakerOutput[outputKey["gender"]] = 0
+            speakerOutput[outputKey["male"]] = 0
+            speakerOutput[outputKey['female']] = 1
         speakerOutput[outputKey["age"]] = float(speaker["age"]) / 100.0
         speakerOutput[outputKey["onset age"]] = float(speaker["onset age"]) / 100.0
         speakerOutput[outputKey["LOR"]] = float(speaker["LOR"]) / 100.0
@@ -49,6 +56,7 @@ with open("speakers.csv", 'rb') as csvFile:
             speakerOutput[outputKey[category + " - " + speaker[category]]] = 1
         speakerOutputs.append(speakerOutput)
         speakerOrder.append(speaker["natural language"] + speaker["NL #"])
+print maleCount
 
 # write speakerOutputs to csv
 with open('outputs.csv', 'wb') as outputs:

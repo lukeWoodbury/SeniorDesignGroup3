@@ -68,9 +68,9 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
     cutoff = 0
     for speaker, output in zip( speakerOrder, outputs ):
         speakerList.append( ( speaker, output ) )
-        cutoff += 1
-        if cutoff >= 2:
-            break
+        #cutoff += 1
+        #if cutoff >= 2:
+            #break
     # begin infinite loop through data, shuffling each time
     while True:
         random.shuffle( speakerList )
@@ -83,26 +83,31 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
             else:
                 wavData = wav[1].astype( float ).sum( axis = 1 ) / 2.0
             # begin loop through current audio file
-            dataCount = randint( 0, audioSegmentLength - 1 )
+            startPoint = randint( 0, len( wavData ) - ( audioSegmentLength * batchSize ) - 1 )
+            dataCount = 0
             #freqData.append( rfft( wavData ).tolist() )
             for amplitude in wavData:
                 # build sample
-                paddedWavData[sampleCount][dataCount][0] = amplitude / (2.**15)
-                dataCount += 1
-                if dataCount == audioSegmentLength:
-                    # pair sample with output
-                    dataCount = 0
-                    newOutput.append( output )
-                    freqData.append( rfft( paddedWavData[sampleCount].T ) )
-                    sampleCount += 1
-                    if sampleCount == batchSize:
-                        sampleCount = 0
-                        #yield( [ paddedWavData, np.asarray( freqData ) ], convertOutput( batchSize, newOutput, outputShape ) )
-                        yield( paddedWavData, convertOutput( batchSize, newOutput, outputShape ) )
-                        paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
-                        newOutput = []
-                        freqData = []
-            # out of wav data in this audio file, yield current clip
+                if startPoint <= 0 :
+                    paddedWavData[sampleCount][dataCount][0] = amplitude / (2.**15)
+                    dataCount += 1
+                    if dataCount == audioSegmentLength:
+                        # pair sample with output
+                        dataCount = 0
+                        newOutput.append( output )
+                        freqData.append( rfft( paddedWavData[sampleCount].T ) )
+                        sampleCount += 1
+                        if sampleCount == batchSize:
+                            sampleCount = 0
+                            yield( [ paddedWavData, np.asarray( freqData ) ], convertOutput( batchSize, newOutput, outputShape ) )
+                            #yield( paddedWavData, convertOutput( batchSize, newOutput, outputShape ) )
+                            paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
+                            newOutput = []
+                            freqData = []
+                            break
+                else :
+                    startPoint -= 1
+            '''# out of wav data in this audio file, yield current clip
             newOutput.append( output )
             freqData.append( rfft( paddedWavData[sampleCount].T ) )
             sampleCount += 1
@@ -112,13 +117,13 @@ def dataFeed( batchSize, audioSegmentLength, outputLength, outputShape ):
                 yield( paddedWavData, convertOutput( batchSize, newOutput, outputShape ) )
                 paddedWavData = np.zeros( ( batchSize, audioSegmentLength, 1 ) )
                 newOutput = []
-                freqData = []
+                freqData = []'''
 
 # definitions
 batchSize = 400
-audioSegmentLength = 441 #1 * 16000 / 2
+audioSegmentLength = 441
 outputLength = 529
-outputShape = ( 2, )#, 1, 1, 1, 6, 179, 122, 215 )
+outputShape = ( 2, 1, 1, 1, 6, 179, 122, 215 )
 priorityResource = 'gpu'
 
 '''myDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
@@ -153,39 +158,34 @@ x = Dense( 50, activation = 'relu', name = 'hidden20' )( x )
 gender = Dense( 50, activation = 'sigmoid', name = 'hidden21' )( x )
 gender = Dense( 50, activation = 'relu', name = 'hidden22' )( gender )
 gender = Dense( 2, activation = 'softmax', name = 'gender' )( gender )
-'''age = Dense( 100, activation = 'sigmoid', name = 'hidden12' )( x )
-age = Dense( 100, activation = 'relu', name = 'hidden13' )( age )
-age = Dense( 1, activation = 'linear', name = 'age' )( age )
-onsetAge = Dense( 100, activation = 'sigmoid', name = 'hidden14' )( x )
-onsetAge = Dense( 100, activation = 'relu', name = 'hidden15' )( onsetAge )
-onsetAge = Dense( 1, activation = 'linear', name = 'onsetAge' )( onsetAge )
-LOR = Dense( 100, activation = 'sigmoid', name = 'hidden16' )( x )
-LOR = Dense( 100, activation = 'relu', name = 'hidden17' )( LOR )
-LOR = Dense( 1, activation = 'linear', name = 'LOR' )( LOR )
-LS = Dense( 100, activation = 'sigmoid', name = 'hidden18' )( x )
-LS = Dense( 100, activation = 'relu', name = 'hidden19' )( LS )
+age = Dense( 1, activation = 'linear', name = 'age' )( x )
+onsetAge = Dense( 1, activation = 'linear', name = 'onsetAge' )( x )
+LOR = Dense( 1, activation = 'linear', name = 'LOR' )( x )
+LS = Dense( 50, activation = 'sigmoid', name = 'hidden23' )( x )
+LS = Dense( 50, activation = 'relu', name = 'hidden24' )( LS )
 LS = Dense( 6, activation = 'softmax', name = 'LS' )( LS )
-country = Dense( 100, activation = 'sigmoid', name = 'hidden20' )( x )
-country = Dense( 100, activation = 'relu', name = 'hidden21' )( country )
+country = Dense( 100, activation = 'sigmoid', name = 'hidden25' )( x )
+country = Dense( 100, activation = 'relu', name = 'hidden26' )( country )
 country = Dense( 179, activation = 'softmax', name = 'country' )( country )
-ER = Dense( 100, activation = 'sigmoid', name = 'hidden22' )( x )
-ER = Dense( 100, activation = 'relu', name = 'hidden23' )( ER )
+ER = Dense( 100, activation = 'sigmoid', name = 'hidden27' )( x )
+ER = Dense( 100, activation = 'relu', name = 'hidden28' )( ER )
 ER = Dense( 122, activation = 'softmax', name = 'ER' )( ER )
-NL = Dense( 100, activation = 'sigmoid', name = 'hidden24' )( x )
-NL = Dense( 100, activation = 'relu', name = 'hidden25' )( NL )
-NL = Dense( 215, activation = 'softmax', name = 'NL' )( NL )'''
-model = Model( input = [ wavInputs, freqInputs ], output = gender )#, age, onsetAge, LOR, LS, country, ER, NL] )
-losses = { 'gender': 'categorical_crossentropy' }#, 'age': 'mse', 'onsetAge': 'mse', 'LOR': 'mse', 'LS': 'categorical_crossentropy', 'country': 'categorical_crossentropy', 'ER': 'categorical_crossentropy', 'NL': 'categorical_crossentropy' }
+NL = Dense( 100, activation = 'sigmoid', name = 'hidden29' )( x )
+NL = Dense( 100, activation = 'relu', name = 'hidden30' )( NL )
+NL = Dense( 215, activation = 'softmax', name = 'NL' )( NL )
+model = Model( input = [ wavInputs, freqInputs ], output = [ gender, age, onsetAge, LOR, LS, country, ER, NL] )
+losses = { 'gender': 'categorical_crossentropy', 'age': 'mse', 'onsetAge': 'mse', 'LOR': 'mse', 'LS': 'categorical_crossentropy', 'country': 'categorical_crossentropy', 'ER': 'categorical_crossentropy', 'NL': 'categorical_crossentropy' }
 csv_logger = CSVLogger( 'training.log' )
 checkpoint_logger = ModelCheckpoint('model.h5')
 # serialize model to JSON
 model_json = model.to_json()
 with open("model.json", "w") as json_file:
     json_file.write(model_json)
-model.compile( optimizer = RMSprop( lr = .00001 ), loss = losses, metrics = ['accuracy'] )
+model.compile( optimizer = RMSprop( lr = .00001 ), loss = losses, loss_weights = [ 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0 ], metrics = ['accuracy'] )
 print( model.summary() )
-fitDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
-model.fit_generator( fitDataFeed, samples_per_epoch = 60000, nb_epoch = 1000, max_q_size = 2, verbose = 1, callbacks = [csv_logger, checkpoint_logger] )
+trainDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
+testDataFeed = dataFeed( batchSize, audioSegmentLength, outputLength, outputShape )
+model.fit_generator( trainDataFeed, samples_per_epoch = 60000, nb_epoch = 1000, validation_data = testDataFeed, nb_val_samples = 4000, max_q_size = 2, verbose = 1, callbacks = [csv_logger, checkpoint_logger] )
 '''# serialize weights to HDF5
 model.save_weights("model.h5")
 print("Saved model to disk")'''
