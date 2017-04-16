@@ -1,0 +1,22 @@
+train 
+check boxes 
+    use class weights
+c = Checkbutton(master, text="Expand", variable=var)
+c.pack()
+    
+input learing rate txt box
+drop down list optimizer
+
+los weights input box
+category - weight 0-1
+
+btach size input box
+
+input boxes for catagories changes 
+
+
+new menu 
+dialog box
+
+
+
